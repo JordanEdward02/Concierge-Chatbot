@@ -69,8 +69,11 @@ class chatBot():
         Although for current demo purposes this will be called every time.
         Uses POS tagging and a short list of custom stopwords relating to name-related responses
         """
+        # LOADS IN THE NOUNS WHICH ARE LIKELY TO BE SAID IN RESPONSE TO THE NAME PROMPT.
         possessive_nouns = open("dataset/Misc/nameless_nouns.txt", encoding="utf8", errors="ignore", mode="r").read().replace("\n", " ").lower()
         jprint("Hi! I'm your digital hotel assistant, JBot! What's your name?")
+        
+        # POS TAGS THE INPUT TO IDENTIFY NOUNS. PERSONAL NOUNS ARE THE NAMES WE WANT TO PULL OUT THIS INPUT
         text_input = input("You: ").lower()
         pos_tagged = dict(nltk.pos_tag(word_tokenize(text_input), tagset="universal"))
         nouns = []
@@ -78,6 +81,7 @@ class chatBot():
             if pos == "NOUN":
                 nouns.append(word)
 
+        # REMOVES THE NOUNS WHICH ARE KNOWN TO NOT BE NAMES
         possible_names = []
         for item in nouns:
             if item not in possessive_nouns:
@@ -85,6 +89,7 @@ class chatBot():
         if len(possible_names) > 0:
             self.user = " ".join(possible_names)
 
+        # TRIES TO FIND THE WORD 'IS' IF THE NOUN TECHNIQUE FAILS AS A LAST RESORT TO IDENTIFY THE NAME
         if self.user == None:
             try:
                 is_location = text_input.split(" ").index("is")
@@ -92,6 +97,8 @@ class chatBot():
             except:
                 jprint("Sorry I didnt manage to get that. Regardless, what can I help you with?")
                 return
+
+        # FORMATS THE USERS NAME CORRECTLY AND STORES IT WITHIN THE BOT
         self.user = self.user.title()
         jprint("Nice to meet you " + self.user +". What can I help you with?")
         return
@@ -123,14 +130,25 @@ class chatBot():
         elif file_id == "stop.txt":
             category = STOP
         """
-        category = QAA
+        category = TRANSACTION
         return category
 
-    def identityManagement(self, input):
-        jprint("I think you're talking about a name")
-        return
-
     def transaction(self, input):
+        to_do = ["name", "date", "room", "email", "phone", "requests"]
+
+        if self.user != None:
+            jprint("Would you like the booking under the name " + self.user + "?")
+            response = userInput()
+            if ("yes" in response.lower() or "yeah" in response.lower()):
+                to_do.remove("name")
+            else:
+                jprint("What name would you like to put it under?")
+                name_input = userInput()
+
+
+        while len(to_do) > 0:
+            # DO STUFF HERE
+            test = 0
         jprint("I think you want to make a transaction")
         return
 
@@ -141,22 +159,28 @@ class chatBot():
         In addition it checks if similarity is above a given threshold.
         """
         qaa_doc = pd.read_excel("./dataset/QAA/QAA.xlsx")
-        
-        #=======================
-        # IN NEED OF SOME PRE-PROCESSING BEFORE THE OTHER STUFF. CONSIDER LEMMATISING THE DATA.
-        #=======================
+
+        # CUSTOM STOPWORDS ARE LOADED. THESE ARE INPUT INTO THE QA DATASET AND OUR INPUT. IT MUST BE A CUSTOM LIST AS WORDS LIKE WHEN AND WHERE ARE IMPORTANT IN QUESTIONS
+        our_stopwords = open("./dataset/Misc/myStopwords.txt", "r").read().split("\n")
 
         # CREATES THE QA MATRIX
-        count_vec = CountVectorizer(tokenizer=word_tokenize)
+        count_vec = CountVectorizer(tokenizer=word_tokenize, stop_words=our_stopwords)
         qaa_matrix = count_vec.fit_transform(qaa_doc["Questions"])
-        tf_transformer = TfidfTransformer(use_idf=True).fit(qaa_matrix) # Adding sublinear is not important since all questions are roughly the same size :)
+        tf_transformer = TfidfTransformer(use_idf=True).fit(qaa_matrix) # Adding sublinear parameter is not important since all questions are roughly the same size, that is for ratio not flat numbers :)
         qaa_matrix = tf_transformer.transform(qaa_matrix).toarray()
 
         # PUTS THE INPUT IN THE SAME SPACE AS THE QA MATRIX
-        input_vec = CountVectorizer(tokenizer=word_tokenize, vocabulary=count_vec.vocabulary_) # use the same vocabulary as qa dataset so we it is in the same dimensions/space
+        input_vec = CountVectorizer(tokenizer=word_tokenize, vocabulary=count_vec.vocabulary_, stop_words=our_stopwords) # use the same vocabulary as qa dataset so we it is in the same dimensions/space
         input_array = input_vec.transform([input])
         input_array = tf_transformer.transform(input_array).toarray()
-        # CALCULATE THE SIMILARITY OF THE THE INPUT COPMARED WITH OUR QUESTIONS IN THE DATASET
+
+
+        # IF ALL OF THE VALUES IN THE LIST ARE 0, SO IF NONE OF THE PROCESSED WORDS IN THE INPUT ARE IN THE QA VOCAB, WE STOP 
+        if all(item == 0 for item in input_array[0]):
+            jprint("Sorry I didn't quite get that. Either rephrase your question or ask a member of staff")
+            return
+
+        # CALCULATE THE SIMILARITY OF THE THE INPUT COMPARED WITH OUR QUESTIONS IN THE DATASET
         most_similar_question = 0
         similatiry_value = 0.0
         count = 0
@@ -167,11 +191,12 @@ class chatBot():
                 most_similar_question = count
             count += 1
 
-        #=======================
-        # ADD A CHECK TO ENSURE TEH SIMILARITY IS ABOVE A THRESHOLD. PROBABLY AROUND 70%?
-        #=======================
-        
+        # ASSUMES THE QUESTION IS NOT CORRECT IF THE SIMILARITY IS TOO LOW
         debug(similatiry_value) 
+        if similatiry_value < 0.65:
+            jprint("Sorry I didn't quite get that. Either rephrase your question or ask a member of staff")
+            return
+
         # OUTPUTS THE ANSWER CORRESPONDING TO THE MOST SIMILAR QUESTION
         jprint(qaa_doc["Answers"][most_similar_question])
         return
@@ -180,8 +205,11 @@ class chatBot():
         jprint("Did you mean something like.... ?")
         return 
 
+def userInput():
+    return input("You: ")
+
 def jprint(output):
-    print("JBot: " + output)
+    print("JBot: " + str(output))
     return
 
 def debug(output):
@@ -193,24 +221,9 @@ if __name__ == "__main__":
     our_bot = chatBot()
     our_bot.getName()
     while running:
-        user_input = input("You: ")
+        user_input = userInput()
         intent = our_bot.matchIntent(user_input)
         if intent == QAA:
             our_bot.answerQuestion(user_input)
-        """
-        if intent == STOP:
-            leave_confirmation = input("JBot: Are you sure you want to leave? (yes/no)\nYou: ")
-            if "yes" in leave_confirmation:
-                jprint("Goodbye!")
-                break
-        elif intent == IDENTITY:
-            ourBot.identityManagement(user_input)
-        elif intent == SMALL_TALK:
-            ourBot.smallTalk()
-        elif intent == QAA:
-            ourBot.answerQuestion()
-        else:
-            ourBot.disambiguate()
-            jprint("Sorry I don't understand, please rephrase that.")
-        """
-
+        elif intent == TRANSACTION:
+            our_bot.transaction(user_input)
