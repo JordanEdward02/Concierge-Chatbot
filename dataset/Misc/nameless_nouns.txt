@@ -7,3 +7,7 @@ people
 friend
 friends
 everyone
+no
+nope
+nah
+you

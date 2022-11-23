@@ -7,6 +7,7 @@ import numpy
 import scipy
 import os
 import pandas as pd
+import datetime
 
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
@@ -62,7 +63,7 @@ class chatBot():
         """
         return
 
-    def getName(self):
+    def getName(self, text_input):
         """
         Called upon initialising the bot to start by finding the users name. Since this is for use in someones hotel
         for the duration of a stay, this would only occur once and then remember it for the remainded.
@@ -71,10 +72,8 @@ class chatBot():
         """
         # LOADS IN THE NOUNS WHICH ARE LIKELY TO BE SAID IN RESPONSE TO THE NAME PROMPT.
         possessive_nouns = open("dataset/Misc/nameless_nouns.txt", encoding="utf8", errors="ignore", mode="r").read().replace("\n", " ").lower()
-        jprint("Hi! I'm your digital hotel assistant, JBot! What's your name?")
         
         # POS TAGS THE INPUT TO IDENTIFY NOUNS. PERSONAL NOUNS ARE THE NAMES WE WANT TO PULL OUT THIS INPUT
-        text_input = input("You: ").lower()
         pos_tagged = dict(nltk.pos_tag(word_tokenize(text_input), tagset="universal"))
         nouns = []
         for word, pos in pos_tagged.items():
@@ -95,13 +94,12 @@ class chatBot():
                 is_location = text_input.split(" ").index("is")
                 self.user = str(text_input.split(" ")[is_location+1])
             except:
-                jprint("Sorry I didnt manage to get that. Regardless, what can I help you with?")
-                return
+                self.user = None
+                return False
 
         # FORMATS THE USERS NAME CORRECTLY AND STORES IT WITHIN THE BOT
         self.user = self.user.title()
-        jprint("Nice to meet you " + self.user +". What can I help you with?")
-        return
+        return True
 
     def matchIntent(self, input):
         """
@@ -134,22 +132,123 @@ class chatBot():
         return category
 
     def transaction(self, input):
-        to_do = ["name", "date", "room", "email", "phone", "requests"]
+        booking_name = None
+        to_do = ["date"]#, "name", "room", "email", "phone", "requests"]
 
+        """
+        #  CODE TO VALIDATE THE BOOKING NAME IF THE SYSTEM KNOWS THE USERS NAME
         if self.user != None:
-            jprint("Would you like the booking under the name " + self.user + "?")
-            response = userInput()
-            if ("yes" in response.lower() or "yeah" in response.lower()):
-                to_do.remove("name")
+            if (len(self.user.split(" ")) > 1):
+                jprint("Would you like the booking under your name (" + self.user + ")?")
+                response = userInput()
+                if (confirm(response) == False):
+                    jprint("What name would you like to use for your booking?")
+                    actual_user = self.user
+                    input= userInput()
+                    self.getName(input)
+                    booking_name = self.user
+                    self.user = actual_user
+                    if (booking_name == None):
+                        booking_name = "_error_"
+                    while(len(booking_name.split(" ")) < 2):
+                        if (booking_name == "_error_"):
+                            jprint("Sorry, but you'll have to be more specific. Please state the first and last name for your booking.")  
+                        else:    
+                            jprint("Sorry " + self.user + ", but you'll have to be more specific. Please state the first and last name for your booking.")
+                        actual_user = self.user
+                        input= userInput()
+                        self.getName(input)
+                        booking_name = self.user
+                        self.user = actual_user
+                        if (booking_name == None):
+                            booking_name = "_error_"
             else:
-                jprint("What name would you like to put it under?")
-                name_input = userInput()
-
+                jprint("Okay " + self.user + ", what is your full name?")
+                input = userInput()
+                self.getName(input)
+                while(len(self.user.split(" ")) < 2):
+                    jprint("Sorry " + self.user + ", but you'll have to be more specific. Please state your first and last name.")
+                    input= userInput()
+                    self.getName(input)
+            if (booking_name != None):
+                self.user = booking_name
+            to_do.remove("name")
+        """
 
         while len(to_do) > 0:
-            # DO STUFF HERE
-            test = 0
-        jprint("I think you want to make a transaction")
+
+            # IF NAME IS NOT KNOWN WE PROMPT THE USER TO INPUT TEHEIR NAME. WE USE THE PREVIOUS GETNAME FUNCTION AND REPEAT UNTIL IN A DESIRED FORMAT
+            if ("name" in to_do):
+                jprint("What name would you like to use for your booking?")
+                actual_user = self.user
+                input= userInput()
+                self.getName(input)
+                booking_name = self.user
+                self.user = actual_user
+                if (booking_name == None):
+                    booking_name = "_error_"
+                while(len(booking_name.split(" ")) < 2):
+                    if (booking_name == "_error_"):
+                        jprint("Sorry, but you'll have to be more specific. Please state the first and last name for your booking.")  
+                    else:    
+                        jprint("Sorry " + booking_name + ", but you'll have to be more specific. Please state the first and last name for your booking.")
+                    actual_user = self.user
+                    input= userInput()
+                    self.getName(input)
+                    booking_name = self.user
+                    self.user = actual_user
+                    if (booking_name == None):
+                        booking_name = "_error_"
+                jprint("Is " + booking_name + "your name as well?")
+                input = userInput()
+                if (confirm(input)):
+                    self.user = booking_name
+                else:
+                    self.getName(input)
+                to_do.remove("name")
+            
+            # IF THE DATE IS NOT KNOWN WE PROMPT THE USER FOR THE TIMES OF THEIR STAY. THIS HAS TO DEAL WITH DIFFERENT FORMATS
+            if ("date" in to_do):
+                dates = []
+                jprint("When do you want the room?")
+                input = userInput()
+
+                
+                # ===========
+                # ADD IN A CONVERTER TO PUT OTHER DAT FORMATS, SUCH AS WRITTEN INTO ACCEPTABLE FORMAT
+                # ===========
+
+                """ THIS NEED EXPANING TO BE ABLE TO CONVERT THE OCCURANES OF THE WRITTEN DATE INTO THE CORRECT FORMAT. MAP MONTH TO NUMBER EASILY, DATE EXTRACTION MAY BE HARDER
+                BUT START LEFT TO RIGHT, PAIRING DATES AND MONTH. IF NEXT MONTH < CURRENT, IT MUST BE FOLLOWING YEAR. MAY ALSO NEED TO CONSIDER THE CURRENT MONTH
+                digits = open("./dataset/Transaction.digits.txt", encoding="utf8", errors="ignore").read()
+                with open("./dataset/Transaction/months.txt", encoding="utf8", errors="ignore").read().lower().split("\n") as months:
+                    input_array = input.split(" ")
+                    for word_index in range(len(input_array)):
+                        if input_array[word_index] in months:
+                """
+
+                if (input.find("/") != -1):
+                    date_input = input.split(" ")
+                    for item in date_input:
+                        # dd/mm/yyyy (or yy) format
+                        if ("/" in item):
+                            split_dates = item.split("/")
+                            if (len(split_dates[2]) == 4):
+                                split_dates[2] = split_dates[2][-2:]
+                            debug(split_dates)
+                            try:
+                                datetime.datetime(int(split_dates[2]), int(split_dates[1]), int(split_dates[0]))
+                                dates.append("".join(split_dates))
+                            except:
+                                debug("invalid date")
+
+
+                debug(dates)
+                if (len(dates) == 2):
+                    to_do.remove("date")
+                    continue
+                   
+        jprint("Transaction complete")
         return
 
     def answerQuestion(self, input):
@@ -205,6 +304,11 @@ class chatBot():
         jprint("Did you mean something like.... ?")
         return 
 
+def confirm(input):
+    if ("yes" in input.lower() or "yeah" in input.lower()):
+        return True
+    return False
+
 def userInput():
     return input("You: ")
 
@@ -219,7 +323,14 @@ def debug(output):
 if __name__ == "__main__":
     running = True
     our_bot = chatBot()
-    our_bot.getName()
+    """
+    jprint("Hi! I'm your digital hotel assistant, JBot! What's your name?")
+    text_input = input("You: ").lower()
+    if (our_bot.getName(text_input=text_input)):
+        jprint("Nice to meet you " + our_bot.user +". What can I help you with?")
+    else:
+        jprint("Sorry I didnt manage to get that. Regardless, what can I help you with?")
+    """
     while running:
         user_input = userInput()
         intent = our_bot.matchIntent(user_input)
