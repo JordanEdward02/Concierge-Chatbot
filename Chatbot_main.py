@@ -132,10 +132,15 @@ class chatBot():
         return category
 
     def transaction(self, input):
-        booking_name = None
-        to_do = ["date"]#, "name", "room", "email", "phone", "requests"]
 
-        """
+        #=========
+        # Need to add somewhere we store all this transaction data. Also use the input which prompts this in the pipeline to detect information.
+        # This would likely only need to look at dates.
+        #=========
+
+        booking_name = None
+        to_do = ["requests", "name", "date", "email"]
+        responses = {}
         #  CODE TO VALIDATE THE BOOKING NAME IF THE SYSTEM KNOWS THE USERS NAME
         if self.user != None:
             if (len(self.user.split(" ")) > 1):
@@ -173,7 +178,6 @@ class chatBot():
             if (booking_name != None):
                 self.user = booking_name
             to_do.remove("name")
-        """
 
         while len(to_do) > 0:
 
@@ -199,12 +203,14 @@ class chatBot():
                     self.user = actual_user
                     if (booking_name == None):
                         booking_name = "_error_"
-                jprint("Is " + booking_name + "your name as well?")
-                input = userInput()
-                if (confirm(input)):
-                    self.user = booking_name
-                else:
-                    self.getName(input)
+                if self.user == None:
+                    jprint("Is " + booking_name + " your name as well?")
+                    input = userInput()
+                    if (confirm(input)):
+                        self.user = booking_name
+                    else:
+                        self.getName(input)
+                responses["name"] = booking_name
                 to_do.remove("name")
             
             # IF THE DATE IS NOT KNOWN WE PROMPT THE USER FOR THE TIMES OF THEIR STAY. THIS HAS TO DEAL WITH DIFFERENT FORMATS
@@ -212,20 +218,34 @@ class chatBot():
                 dates = []
                 jprint("When do you want the room?")
                 input = userInput()
-
-                
-                # ===========
-                # ADD IN A CONVERTER TO PUT OTHER DAT FORMATS, SUCH AS WRITTEN INTO ACCEPTABLE FORMAT
-                # ===========
-
-                """ THIS NEED EXPANING TO BE ABLE TO CONVERT THE OCCURANES OF THE WRITTEN DATE INTO THE CORRECT FORMAT. MAP MONTH TO NUMBER EASILY, DATE EXTRACTION MAY BE HARDER
-                BUT START LEFT TO RIGHT, PAIRING DATES AND MONTH. IF NEXT MONTH < CURRENT, IT MUST BE FOLLOWING YEAR. MAY ALSO NEED TO CONSIDER THE CURRENT MONTH
-                digits = open("./dataset/Transaction.digits.txt", encoding="utf8", errors="ignore").read()
-                with open("./dataset/Transaction/months.txt", encoding="utf8", errors="ignore").read().lower().split("\n") as months:
-                    input_array = input.split(" ")
+                days = []
+                months = []
+                years = []
+                with open("./dataset/Transaction/months.txt", encoding="utf8", errors="ignore")as months_file:
+                    month_list = months_file.read().lower().split("\n")
+                    input_array = input.lower().split(" ")
                     for word_index in range(len(input_array)):
-                        if input_array[word_index] in months:
-                """
+                        # IF WORD IS A MONTH ADD IT TO MONTHS
+                        if input_array[word_index] in month_list:
+                            months.append(month_list.index(input_array[word_index]) + 1)
+                        # IF WORD IS A NUMBER, ADD IT TO DAYS OR YEARS. THIS PRE-PROCESSES TO ENSURE THE STRING IS ONLY DIGITS IF POSSIBLE
+                        removed_extra = input_array[word_index].replace("th", "").replace("nd", "").replace("st", "")
+                        if removed_extra.isdigit():
+                            if (len(removed_extra) == 4):
+                                years.append(removed_extra)
+                            elif (len(removed_extra) < 3):
+                                days.append(removed_extra)
+                
+                if len(days) == 2 and (len(months) == 1 or len(months) == 2):   
+
+                    if (len(years) == 0):
+                        years = [datetime.datetime.now().year,datetime.datetime.now().year]
+                    if (len(years) == 1):
+                        years.append(years[0])
+                    if (len(months) == 1):
+                        months.append(months[0])
+                    # MAP THE MONTH TO INT
+                    input = str(days[0]) + "/" + str(months[0]) + "/" + str(years[0]) + " " + str(days[1]) + "/" + str(months[1]) + "/" + str(years[1])
 
                 if (input.find("/") != -1):
                     date_input = input.split(" ")
@@ -233,23 +253,74 @@ class chatBot():
                         # dd/mm/yyyy (or yy) format
                         if ("/" in item):
                             split_dates = item.split("/")
-                            if (len(split_dates[2]) == 4):
-                                split_dates[2] = split_dates[2][-2:]
-                            debug(split_dates)
                             try:
                                 datetime.datetime(int(split_dates[2]), int(split_dates[1]), int(split_dates[0]))
-                                dates.append("".join(split_dates))
+                                dates.append("/".join(split_dates))
                             except:
-                                debug("invalid date")
+                                None
 
-
-                debug(dates)
+                if (input.find("-") != -1):
+                    dates = []
+                    date_input = input.split(" ")
+                    for item in date_input:
+                        # dd/mm/yyyy (or yy) format
+                        if ("-" in item):
+                            split_dates = item.split("-")
+                            try:
+                                datetime.datetime(int(split_dates[2]), int(split_dates[1]), int(split_dates[0]))
+                                dates.append("/".join(split_dates))
+                            except:
+                                None
                 if (len(dates) == 2):
+                    responses["dates"] = dates
                     to_do.remove("date")
                     continue
-                   
-        jprint("Transaction complete")
-        return
+                else:
+                    jprint("Sorry I didn't quite get that, please tell me the start and end dates, with both in the same format (either DD/MM/YYYY or written formally)")
+                    continue
+
+            # IF EMAIL IS NOT KNOWN, WE PROMPT THE USER FOR IT. ALSO DO SOME PARSING TO ENSURE IT'S ~VALID BY CHECKING FOR AN @ AND A VALID ENDING
+            if ("email" in to_do):
+                jprint("We will need a way to contact you and send booking confirmation. What is your email address?")
+                email = None
+                valid = False
+                while valid == False:
+                    input = userInput().split(" ")
+                    for word in input:
+                        if (word.find("@") != -1):
+                            words = word.split("@")
+                            if (words[1].count(".") == 1):
+                                if words[1][-4:] == ".com":
+                                    valid = True
+                            elif (words[1].count(".") == 2):
+                                if words[1][-6:] == ".co.uk" or words[1][-6:] == ".ac.uk":
+                                    valid = True
+                        if (valid and email == None):
+                            email = word
+                    if (valid == False):
+                        jprint("Sorry I'm not sure that's a valid email. Please send me one like JBot@example.com")
+                responses["email"] = email
+                to_do.remove("email")
+
+            # IF THE USER HAS A SPECIAL REQUEST, THEY CAN INPUT IT HERE. OTHERWISE, IF THEY SO NO, THEN IT WON'T STORE THE DATA
+            if ("requests" in to_do):
+                jprint("Do you have any specific requests for your stay?")
+                input = userInput()
+                if (deny(input) == False):
+                    responses["request"] = input.lower()
+                to_do.remove("requests")
+
+        if "request" in responses.keys():
+            jprint("Great! So I've got a booking for " + responses["name"] + " from " + responses["dates"][0] + " until " + responses["dates"][1] + " with the special request '" + responses["request"] +"'. I also have that you can be contacted via " + responses["email"] + ". Is this correct?")
+        else:
+            jprint("Great! So I've got a booking for " + responses["name"] + " from " + responses["dates"][0] + " until " + responses["dates"][1] + ". I also have that you can be contacted via " + responses["email"] + ". Is this correct?")
+        input = userInput()
+        if confirm(input):
+            return
+        else:
+            jprint("Okay lets try this again...")
+            self.transaction("")
+
 
     def answerQuestion(self, input):
         """
@@ -300,12 +371,17 @@ class chatBot():
         jprint(qaa_doc["Answers"][most_similar_question])
         return
     
-    def disambiguate(self):
-        jprint("Did you mean something like.... ?")
-        return 
 
 def confirm(input):
-    if ("yes" in input.lower() or "yeah" in input.lower()):
+    input = str(input).split(" ")
+    for word in input:
+        if ("yes" in word.lower() or "yeah" in word.lower() or word.lower() == "y"):
+            return True
+    return False
+
+def deny(input):
+    input = str(input).split(" ")
+    if input[0].lower() == "no" or input[0].lower() == "nope":
         return True
     return False
 
@@ -326,7 +402,7 @@ if __name__ == "__main__":
     """
     jprint("Hi! I'm your digital hotel assistant, JBot! What's your name?")
     text_input = input("You: ").lower()
-    if (our_bot.getName(text_input=text_input)):
+    if (our_bot.getName(text_input)):
         jprint("Nice to meet you " + our_bot.user +". What can I help you with?")
     else:
         jprint("Sorry I didnt manage to get that. Regardless, what can I help you with?")
