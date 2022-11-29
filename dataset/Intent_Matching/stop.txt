@@ -1,8 +1,0 @@
-close
-exit
-stop
-terminate
-shutdown
-end
-goodbye
-bye
