@@ -9,6 +9,9 @@ Used for similarity function. This is used in the QA system for cosine similarit
 Lab3: https://moodle.nottingham.ac.uk/pluginfile.php/8612037/mod_resource/content/5/COMP3074_Lab3.pdf
 Used for the QA system and Intent matching
 
+SKLearn Multiclassifier: https://scikit-learn.org/stable/modules/multiclass.html
+Used in the intent matching system
+
 """
 
 import nltk
@@ -26,12 +29,14 @@ from sklearn.model_selection import train_test_split
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import SVC
+from sklearn.model_selection import cross_val_score
 
 
 nltk.download("wordnet")
 nltk.download("averaged_perceptron_tagger")
 nltk.download("universal_tagset")
 nltk.download('omw-1.4')
+nltk.download('punkt')
 
 lemmatiser = WordNetLemmatizer ()
 
@@ -44,9 +49,19 @@ QAA = 3
 
 class chatBot():
     user = None
-    intent_matrix = None
-    intent_vocab = None
-    intent_size = None
+    intent_vec = None
+    intent_transformer = None
+    clf = None
+
+    def __init__(self):
+        intent_doc = pd.read_excel("./dataset/Intent_Matching/Intent.xlsx")
+        self.intent_vec = CountVectorizer(lowercase=True, tokenizer=word_tokenize)
+        X_Counts = self.intent_vec.fit_transform(intent_doc["Prompts"])
+
+        self.intent_transformer = TfidfTransformer(use_idf=True, sublinear_tf=True).fit(X_Counts)
+        self.X_tf = self.intent_transformer.transform(X_Counts)
+
+        self.clf = OneVsRestClassifier(SVC(probability=True)).fit(self.X_tf, intent_doc["Labels"])
 
     def getName(self, text_input):
         """
@@ -55,11 +70,16 @@ class chatBot():
         Although for current demo purposes this will be called every time.
         Uses POS tagging and a short list of custom stopwords relating to name-related responses
         """
+
+        intent_stopwords = open("./dataset/Intent_Matching/intent_stopwords.txt").read().lower().split("\n")
+        token_input = word_tokenize(text_input.lower())
+        clean_input = " ".join([word for word in token_input if word not in intent_stopwords])
+
         # LOADS IN THE NOUNS WHICH ARE LIKELY TO BE SAID IN RESPONSE TO THE NAME PROMPT.
-        possessive_nouns = open("dataset/Misc/nameless_nouns.txt", encoding="utf8", errors="ignore", mode="r").read().replace("\n", " ").lower()
+        possessive_nouns = open("./dataset/Misc/nameless_nouns.txt", encoding="utf8", errors="ignore", mode="r").read().replace("\n", " ").lower()
         
         # POS TAGS THE INPUT TO IDENTIFY NOUNS. PERSONAL NOUNS ARE THE NAMES WE WANT TO PULL OUT THIS INPUT
-        pos_tagged = dict(nltk.pos_tag(word_tokenize(text_input), tagset="universal"))
+        pos_tagged = dict(nltk.pos_tag(word_tokenize(clean_input), tagset="universal"))
         nouns = []
         for word, pos in pos_tagged.items():
             if pos == "NOUN":
@@ -76,8 +96,8 @@ class chatBot():
         # TRIES TO FIND THE WORD 'IS' IF THE NOUN TECHNIQUE FAILS AS A LAST RESORT TO IDENTIFY THE NAME
         if self.user == None:
             try:
-                is_location = text_input.split(" ").index("is")
-                self.user = str(text_input.split(" ")[is_location+1])
+                is_location = clean_input.split(" ").index("is")
+                self.user = str(clean_input.split(" ")[is_location+1])
             except:
                 self.user = None
                 return False
@@ -87,23 +107,16 @@ class chatBot():
         return True
 
     def matchIntent(self, input):
-        intent_doc = pd.read_excel("./dataset/Intent_Matching/Intent.xlsx")
-        intent_vec = CountVectorizer(lowercase=True, tokenizer=word_tokenize)
-        X_train_counts = intent_vec.fit_transform(intent_doc["Prompts"])
 
-        intent_transformer = TfidfTransformer(use_idf=True, sublinear_tf=True).fit(X_train_counts)
-        X_train_tf = intent_transformer.transform(X_train_counts)
+        intent_stopwords = open("./dataset/Intent_Matching/intent_stopwords.txt").read().lower().split("\n")
+        token_input = word_tokenize(input.lower())
+        clean_input = " ".join([word for word in token_input if word not in intent_stopwords])
+        processed_input = self.intent_transformer.transform(self.intent_vec.transform([clean_input]))
 
-        clf = OneVsRestClassifier(SVC(probability=True)).fit(X_train_tf, intent_doc["Labels"])
-
-        processed_input = intent_transformer.transform(intent_vec.transform([input]))
-
-        """
-        Add in some probability check so if unsure of the intent make it a default no_match
-        """
-        prediction_values =clf.predict_proba(processed_input)[0]
-        if (max(prediction_values) > 0.65):
-            return clf.predict(processed_input)
+        # Probabilty checks for ensuring confidence with prediction
+        prediction_values = self.clf.predict_proba(processed_input)[0]
+        if (max(prediction_values) > 0.50):
+            return self.clf.predict(processed_input)
         return UNKNOWN
 
     #PRIMARILY USING PATTERN MATCHING AND KEYWORD SEARCH
@@ -347,9 +360,9 @@ class chatBot():
                 to_do.remove("requests")
 
         if "request" in responses.keys():
-            jprint("Great! So I've got a booking for " + responses["name"] + " from " + responses["dates"][0] + " until " + responses["dates"][1] + " with the special request '" + responses["request"] +"'. I also have that you can be contacted via " + responses["email"] + ". Is this correct?")
+            jprint("Great! So I've got a booking for " + str(responses["name"]) + " from " + str(responses["dates"][0]) + " until " + str(responses["dates"][1]) + " with the special request '" + str(responses["request"]) +"'. I also have that you can be contacted via " + str(responses["email"]) + ". Is this correct?")
         else:
-            jprint("Great! So I've got a booking for " + responses["name"] + " from " + responses["dates"][0] + " until " + responses["dates"][1] + ". I also have that you can be contacted via " + responses["email"] + ". Is this correct?")
+            jprint("Great! So I've got a booking for " + str(responses["name"]) + " from " + str(responses["dates"][0]) + " until " + str(responses["dates"][1]) + ". I also have that you can be contacted via " + str(responses["email"]) + ". Is this correct?")
         input = self.userInput()
         if confirm(input):
             jprint("I will send the booking confirmation to you now! Thanks for booking with JBot!")
@@ -424,11 +437,22 @@ class chatBot():
         jprint(qaa_doc["Answers"][most_similar_question])
         return
     
-
     def userInput(self):
         if (self.user == None):
             return input("You: ")
         return input(self.user + ": ")
+
+    def testIntentMatching(self):
+        intent_doc = pd.read_excel("./dataset/Intent_Matching/Intent.xlsx")
+        test_vec = CountVectorizer(lowercase=True, tokenizer=word_tokenize)
+        test_x = test_vec.fit_transform(intent_doc["Prompts"])
+        test_transformer = TfidfTransformer(use_idf=True, sublinear_tf=True).fit(test_x)
+        test_x_tf = test_transformer.transform(test_x)
+        test_clf = OneVsRestClassifier(SVC(probability=True))
+
+
+        scores = cross_val_score(test_clf, test_x_tf, intent_doc["Labels"], cv=5) #scoring="f1_macro" to do f1 scoring instead of accuracy
+        print("%0.2f accuracy with a standard deviation of %0.2f" % (scores.mean(), scores.std()))
 
 def confirm(input):
     input = str(input).split(" ")
